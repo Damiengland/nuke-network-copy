@@ -4,181 +4,141 @@ import time
 from PySide2 import QtCore, QtWidgets, QtGui
 from . import utils
 
-#TODO: update latest netcopy ui
 
 class NetCopyPanel(QtWidgets.QWidget):
     """
-    A Nuke panel widget that displays user information and the latest NetCopy data in a table.
+    Nuke panel for displaying user folders and their latest NetCopy data.
+    Allows copying and sending selected NetCopy files.
     """
+    _instance = None  # Singleton instance
 
     def __init__(self, parent=None):
-        """
-        Initialize the NetCopy panel.
-
-        Args:
-            parent (QWidget, optional): The parent widget.
-        """
         super(NetCopyPanel, self).__init__(parent)
-        self._table = self._build_table_widget()
-        self._init_ui()
-        self.populate_table_with_folders()
+        self.table = self._create_table_widget()
+        self._setup_ui()
+        self._refresh_table()
 
-    def _init_ui(self):
-        """
-        Set up the user interface of the panel.
-        """
-        # Main vertical layout for the panel.
+    # =========================
+    # UI CREATION
+    # =========================
+    def _setup_ui(self):
+        """Initialize and configure the user interface."""
         main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.addWidget(self.table)
+        main_layout.addLayout(self._create_button_panel())
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
-        # Create and add the table widget to the layout.
-        main_layout.addWidget(self._table)
-
-        # Create a horizontal layout for the buttons.
+    def _create_button_panel(self):
+        """Create the button layout (Refresh, Send Selected, Copy)."""
         button_layout = QtWidgets.QHBoxLayout()
 
-        # Create the extra button with an icon.
-        extra_button = QtWidgets.QPushButton()
-        extra_button.clicked.connect(self.on_refresh_button_clicked)
-        # Build the path to the icon; adjust the icon file name/path as needed.
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "icons", "refresh.png")
-        icon = QtGui.QIcon(icon_path)
-        extra_button.setIcon(icon)
-        extra_button.setIconSize(QtCore.QSize(16, 16))
-        # Set a fixed size to roughly the icon's dimensions.
-        extra_button.setFixedSize(24, 24)
-        button_layout.addWidget(extra_button)
+        # Refresh Button
+        refresh_button = self._create_icon_button("refresh.png", self._refresh_table)
+        button_layout.addWidget(refresh_button)
 
-        # Create the "Copy" button.
+        # Send Selected Button
         send_button = QtWidgets.QPushButton("Send Selected")
         send_button.clicked.connect(utils.export_selected_nodes)
         button_layout.addWidget(send_button)
 
-        # Create the "Paste" button.
+        # Copy Button
         copy_button = QtWidgets.QPushButton("Copy")
-        copy_button.clicked.connect(self.on_copy_button_clicked)
+        copy_button.clicked.connect(self._handle_copy_action)
         button_layout.addWidget(copy_button)
 
-        # Add the button layout to the main layout.
-        main_layout.addLayout(button_layout)
+        return button_layout
 
-        # Set the panel to expand in both directions.
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+    def _create_icon_button(self, icon_filename, callback):
+        """Helper to create a button with an icon."""
+        button = QtWidgets.QPushButton()
+        button.clicked.connect(callback)
 
-    def populate_table_with_folders(self):
-        """
-        Retrieves all subfolders from the given directory, checks each folder for a file named "netcopy.nk",
-        gets its last modified time if present, and populates the table with the folder name in the first column and
-        the last modified time in the second column.
-        """
-        directory = utils.get_yaml_var("base_dir")
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "icons", icon_filename)
+        button.setIcon(QtGui.QIcon(icon_path))
+        button.setIconSize(QtCore.QSize(16, 16))
+        button.setFixedSize(24, 24)
+        return button
 
-        if not os.path.isdir(directory):
+    @staticmethod
+    def _create_table_widget():
+        """Set up the QTableWidget for displaying user data."""
+        table = QtWidgets.QTableWidget(0, 2)
+        table.setHorizontalHeaderLabels(['User', 'Latest NetCopy'])
+        table.setColumnWidth(0, 200)
+        table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        table.setSelectionMode(QtWidgets.QTableView.ExtendedSelection)
+        table.setSelectionBehavior(QtWidgets.QTableView.SelectRows)
+        table.setSortingEnabled(True)
+        table.sortByColumn(1, QtCore.Qt.DescendingOrder)
+        table.setAlternatingRowColors(True)
+        return table
+
+    # =========================
+    # DATA HANDLING
+    # =========================
+    def _refresh_table(self):
+        """Refresh table data with updated folder information."""
+        self.table.clearContents()
+        self.table.setRowCount(0)
+        self._populate_table()
+
+    def _populate_table(self):
+        """Retrieve folder data and populate the table."""
+        base_dir = utils.get_yaml_var("base_dir")
+
+        if not os.path.isdir(base_dir):
             nuke.message("Provided path is not a directory!")
             return
 
-        utils.ensure_current_user_folder_exist()
+        utils.ensure_current_user_folder_exists()
+        folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
 
-        # List only subdirectories
-        folders = [f for f in os.listdir(directory)
-                   if os.path.isdir(os.path.join(directory, f))]
+        self.table.setRowCount(len(folders))
 
-        self._table.setRowCount(len(folders))
         for row, folder in enumerate(folders):
-            # Create a table item for the folder name.
-            folder_item = QtWidgets.QTableWidgetItem(folder)
-            self._table.setItem(row, 0, folder_item)
+            # Folder Name
+            self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(folder))
 
-            # Build the path to "netcopy.nk" inside the folder.
-            netcopy_file = os.path.join(directory, folder, "netcopy.nk")
-            if os.path.exists(netcopy_file) and os.path.isfile(netcopy_file):
-                # Get the last modified time and convert it to a human-readable string.
-                last_modified = os.path.getmtime(netcopy_file)
-                last_modified_str = time.ctime(last_modified)
-            else:
-                last_modified_str = "Not found"
+            # Last Modified Date
+            netcopy_path = os.path.join(base_dir, folder, "netcopy.nk")
+            last_modified_str = time.ctime(os.path.getmtime(netcopy_path)) if os.path.isfile(netcopy_path) else "Not found"
+            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(last_modified_str))
 
-            # Create a table item for the last modified time.
-            netcopy_item = QtWidgets.QTableWidgetItem(last_modified_str)
-            self._table.setItem(row, 1, netcopy_item)
-
-    @staticmethod
-    def _build_table_widget():
-        """
-        Create and configure a QTableWidget to display the NetCopy data.
-
-        Returns:
-            QTableWidget: A configured table widget.
-        """
-        table = QtWidgets.QTableWidget()
-
-        # Define the header labels for the table.
-        headers = ['User', 'Latest NetCopy']
-        table.setColumnCount(len(headers))
-        table.setHorizontalHeaderLabels(headers)
-
-        # Configure column sizing:
-        table.setColumnWidth(0, 200)  # Fixed width for the first column.
-        table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)  # Stretch the second column.
-
-        # Configure selection and sorting behavior.
-        table.setSelectionMode(QtWidgets.QTableView.ExtendedSelection)  # Allow selection of multiple rows.
-        table.setSelectionBehavior(QtWidgets.QTableView.SelectRows)  # Entire rows are selected.
-        table.setSortingEnabled(True)  # Enable sorting.
-        table.sortByColumn(1, QtCore.Qt.DescendingOrder)  # Sort the second column descending.
-
-        # Visual appearance settings.
-        table.setAlternatingRowColors(True)  # Use alternating row colors.
-        table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)  # Disable horizontal scroll bar.
-
-        # Set an initial number of rows.
-        table.setRowCount(5)
-
-        # Ensure the table expands with the layout.
-        table.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-
-        return table
-
-    def on_copy_button_clicked(self):
-        """
-        Handler for the "Copy" button. Retrieves the selected row(s) from the table,
-        gets the user name from the first column, and if a file named "netcopy.nk"
-        exists in that user's directory, copies its contents to the clipboard.
-        """
-        selected_rows = self._table.selectionModel().selectedRows()
+    # =========================
+    # EVENT HANDLERS
+    # =========================
+    def _handle_copy_action(self):
+        """Copy the contents of the selected netcopy.nk files to the clipboard."""
+        selected_rows = self.table.selectionModel().selectedRows()
         if not selected_rows:
             nuke.message("No row selected!")
             return
 
+        base_dir = utils.get_yaml_var("base_dir")
+        clipboard = QtWidgets.QApplication.clipboard()
+
         for index in selected_rows:
-            row = index.row()
-            user_item = self._table.item(row, 0)
-            if user_item:
-                user = user_item.text()
-                # Construct the path to the netcopy.nk file using the base directory from YAML.
-                netcopy_file = os.path.join(utils.get_yaml_var("base_dir"), user, "netcopy.nk")
-                if os.path.isfile(netcopy_file):
-                    try:
-                        with open(netcopy_file, "r") as f:
-                            file_contents = f.read()
-                        # Copy the contents to the clipboard using Qt's clipboard.
-                        clipboard = QtWidgets.QApplication.clipboard()
-                        clipboard.setText(file_contents)
-                        nuke.message("Contents of\n '{}' have been copied to the clipboard.".format(netcopy_file))
-                    except Exception as e:
-                        nuke.message("Error copying file contents: " + str(e))
-                else:
-                    nuke.message("File '{}' not found.".format(netcopy_file))
+            user_folder = self.table.item(index.row(), 0).text()
+            file_path = os.path.join(base_dir, user_folder, "netcopy.nk")
+
+            if os.path.isfile(file_path):
+                try:
+                    with open(file_path, "r") as file:
+                        clipboard.setText(file.read())
+                    nuke.message(f"Contents of '{file_path}' copied to clipboard.")
+                except Exception as e:
+                    nuke.message(f"Error reading '{file_path}': {str(e)}")
             else:
-                nuke.message("No user found in row " + str(row))
+                nuke.message(f"File '{file_path}' not found.")
 
-    def on_refresh_button_clicked(self):
-        """
-        Handler for the extra icon button.
-        Clears the table and repopulates it using the base directory from the YAML configuration.
-        """
-        # Clear all contents from the table.
-        self._table.clearContents()
-        self._table.setRowCount(0)
-        self.populate_table_with_folders()
-
-
+    # =========================
+    # EXPOSED METHODS
+    # =========================
+    @staticmethod
+    def open_panel():
+        """Opens the NetCopyPanel singleton instance."""
+        if NetCopyPanel._instance is None:
+            NetCopyPanel._instance = NetCopyPanel()
+        NetCopyPanel._instance.resize(600, 400)
+        NetCopyPanel._instance.show()
+        return NetCopyPanel._instance
