@@ -1,0 +1,21 @@
+# Ignore .idea folder from JetBrains IDEs (e.g., PyCharm)
+.idea/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Virtual environment
+venv/
+env/
+.env/
+
+# OS generated files
+.DS_Store
+Thumbs.db
