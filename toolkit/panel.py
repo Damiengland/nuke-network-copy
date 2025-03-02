@@ -4,6 +4,7 @@ import time
 from PySide2 import QtCore, QtWidgets, QtGui
 from . import utils
 
+# TODO: update folder naming and refine yaml
 
 class NetCopyPanel(QtWidgets.QWidget):
     """
@@ -14,6 +15,10 @@ class NetCopyPanel(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super(NetCopyPanel, self).__init__(parent)
+
+        self.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.WindowStaysOnTopHint)  # Always on top
+        self.setWindowTitle("NetCopy")  # Optional: Set a custom window title
+
         self.table = self._create_table_widget()
         self._setup_ui()
         self._refresh_table()
