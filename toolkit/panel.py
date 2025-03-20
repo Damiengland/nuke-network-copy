@@ -2,6 +2,7 @@ import nuke
 import os
 import time
 from PySide2 import QtCore, QtWidgets, QtGui
+import pyperclip
 from . import utils
 
 # TODO: update folder naming and refine yaml
@@ -120,7 +121,6 @@ class NetCopyPanel(QtWidgets.QWidget):
             return
 
         base_dir = utils.get_yaml_var("base_dir")
-        clipboard = QtWidgets.QApplication.clipboard()
 
         for index in selected_rows:
             user_folder = self.table.item(index.row(), 0).text()
@@ -129,7 +129,8 @@ class NetCopyPanel(QtWidgets.QWidget):
             if os.path.isfile(file_path):
                 try:
                     with open(file_path, "r") as file:
-                        clipboard.setText(file.read())
+                        file_contents = file.read()
+                        pyperclip.copy(file_contents)  # Copy using pyperclip
                     nuke.message(f"Contents of '{file_path}' copied to clipboard.")
                 except Exception as e:
                     nuke.message(f"Error reading '{file_path}': {str(e)}")
